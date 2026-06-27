@@ -1,0 +1,6 @@
+{
+  "appId": "com.alhaj.tuitionmaster",
+  "appName": "TuitionMasterWeb",
+  "webDir": "dist",
+  "bundledWebRuntime": false
+}

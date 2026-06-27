@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">TuitionMasterWeb</string>
+    <string name="title_activity_main">TuitionMasterWeb</string>
+    <string name="package_name">com.alhaj.tuitionmaster</string>
+    <string name="custom_url_scheme">com.alhaj.tuitionmaster</string>
+</resources>

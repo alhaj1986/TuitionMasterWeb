@@ -1,0 +1,30 @@
+# Git
+.git
+.gitignore
+
+# Node
+node_modules
+
+# Local build output (the pipeline always does a fresh build inside Docker)
+dist
+
+# Editor / OS
+.vscode
+.idea
+*.DS_Store
+Thumbs.db
+
+# Test / CI artefacts
+coverage
+*.log
+
+# Android (Capacitor – not needed for the web container)
+android
+
+# Docs
+README.md
+*.md
+
+# Azure DevOps / Docker meta
+azure-pipelines.yml
+.dockerignore

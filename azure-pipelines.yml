@@ -1,0 +1,125 @@
+# ╔══════════════════════════════════════════════════════════════════╗
+# ║         Azure DevOps CI/CD Pipeline – TuitionMasterWeb          ║
+# ║   Builds React/Vite app → Docker image → Pushes to Azure ACR    ║
+# ╚══════════════════════════════════════════════════════════════════╝
+#
+# Pipeline Variables (set in Azure DevOps → Pipelines → Variables, mark as secret):
+#   ACR_NAME         : jujututionmaster
+#   ACR_LOGIN_SERVER : jujututionmaster.azurecr.io
+#   ACR_USERNAME     : jujututionmaster
+#   ACR_PASSWORD     : <your ACR password – stored as a Secret variable>
+#
+# The IMAGE_NAME and TAG are auto-derived from the repo/branch below.
+
+trigger:
+  branches:
+    include:
+      - main
+      - master
+      - develop
+
+pr:
+  branches:
+    include:
+      - main
+      - master
+
+variables:
+  # ── ACR coordinates ───────────────────────────────────────────────
+  acrLoginServer: 'jujututionmaster.azurecr.io'
+  acrName:        'jujututionmaster'
+  imageName:      'tuitionmasterweb'
+
+  # ── Image tag: use the short Git commit SHA for traceability ───────
+  imageTag: '$(Build.SourceVersion)'
+  # A convenience alias that is always the latest on the branch
+  imageTagLatest: 'latest'
+
+  # ── Docker build context ────────────────────────────────────────────
+  dockerfilePath: '$(Build.SourcesDirectory)/Dockerfile'
+  buildContext:   '$(Build.SourcesDirectory)'
+
+pool:
+  vmImage: 'ubuntu-latest'
+
+stages:
+
+# ──────────────────────────────────────────────────────────────────────
+# STAGE 1 ▸ Build & Push Docker Image to ACR
+# ──────────────────────────────────────────────────────────────────────
+- stage: Build
+  displayName: '🔨 Build & Push to ACR'
+  jobs:
+  - job: BuildAndPush
+    displayName: 'Build Docker image and push to ACR'
+    steps:
+
+    # ── 1. Checkout source ─────────────────────────────────────────────
+    - checkout: self
+      displayName: '📥 Checkout source code'
+      fetchDepth: 0
+
+    # ── 2. Login to Azure Container Registry ───────────────────────────
+    - task: Docker@2
+      displayName: '🔐 Login to ACR'
+      inputs:
+        command:             login
+        containerRegistry:   '' # leave blank when using username/password below
+      # We use a script-based login for admin credentials
+      enabled: false   # disabled – we use the script step below instead
+
+    - script: |
+        echo "$(ACR_PASSWORD)" | docker login $(acrLoginServer) \
+          --username $(ACR_USERNAME) \
+          --password-stdin
+      displayName: '🔐 Docker login to ACR'
+      env:
+        ACR_PASSWORD: $(ACR_PASSWORD)   # injected from secret pipeline variable
+
+    # ── 3. Build Docker image ──────────────────────────────────────────
+    - script: |
+        docker build \
+          -t $(acrLoginServer)/$(imageName):$(imageTag) \
+          -t $(acrLoginServer)/$(imageName):$(imageTagLatest) \
+          -f $(dockerfilePath) \
+          $(buildContext)
+      displayName: '🐳 Docker build'
+
+    # ── 4. Push both tags to ACR ───────────────────────────────────────
+    - script: |
+        docker push $(acrLoginServer)/$(imageName):$(imageTag)
+        docker push $(acrLoginServer)/$(imageName):$(imageTagLatest)
+      displayName: '📤 Push image to ACR'
+
+    # ── 5. Output the image digest for traceability ────────────────────
+    - script: |
+        echo "##[section]Image pushed successfully"
+        echo "  Registry : $(acrLoginServer)"
+        echo "  Image    : $(imageName)"
+        echo "  SHA tag  : $(imageTag)"
+        echo "  Latest   : $(imageTagLatest)"
+        docker inspect --format='{{index .RepoDigests 0}}' \
+          $(acrLoginServer)/$(imageName):$(imageTag) || true
+      displayName: '📋 Print image details'
+
+    # ── 6. Publish pipeline artifact (optional – image info summary) ───
+    - script: |
+        mkdir -p $(Build.ArtifactStagingDirectory)/image-info
+        cat > $(Build.ArtifactStagingDirectory)/image-info/image.txt <<EOF
+        ACR_LOGIN_SERVER=$(acrLoginServer)
+        IMAGE_NAME=$(imageName)
+        IMAGE_TAG=$(imageTag)
+        IMAGE_TAG_LATEST=$(imageTagLatest)
+        FULL_IMAGE=$(acrLoginServer)/$(imageName):$(imageTag)
+        BUILD_ID=$(Build.BuildId)
+        BUILD_NUMBER=$(Build.BuildNumber)
+        SOURCE_BRANCH=$(Build.SourceBranch)
+        COMMIT=$(Build.SourceVersion)
+        EOF
+      displayName: '📄 Write image-info artifact'
+
+    - task: PublishBuildArtifacts@1
+      displayName: '📦 Publish image-info artifact'
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)/image-info'
+        ArtifactName:  'image-info'
